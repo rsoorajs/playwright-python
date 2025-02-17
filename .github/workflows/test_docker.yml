@@ -19,23 +19,24 @@ on:
 jobs:
   build:
     timeout-minutes: 120
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         docker-image-variant:
-          - focal
           - jammy
+          - noble
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: "3.10"
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r local-requirements.txt
+        pip install -r requirements.txt
         pip install -e .
     - name: Build Docker image
       run: bash utils/docker/build.sh --amd64 ${{ matrix.docker-image-variant }} playwright-python:localbuild-${{ matrix.docker-image-variant }}
@@ -45,7 +46,8 @@ jobs:
         # Fix permissions for Git inside the container
         docker exec "${CONTAINER_ID}" chown -R root:root /root/playwright
         docker exec "${CONTAINER_ID}" pip install -r local-requirements.txt
+        docker exec "${CONTAINER_ID}" pip install -r requirements.txt
         docker exec "${CONTAINER_ID}" pip install -e .
-        docker exec "${CONTAINER_ID}" python setup.py bdist_wheel
+        docker exec "${CONTAINER_ID}" python -m build --wheel
         docker exec "${CONTAINER_ID}" xvfb-run pytest -vv tests/sync/
         docker exec "${CONTAINER_ID}" xvfb-run pytest -vv tests/async/

@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
 import re
-from datetime import datetime
 
 import pytest
 
@@ -163,7 +163,11 @@ def test_assertions_locator_to_have_js_property(page: Page, server: Server) -> N
     )
     expect(page.locator("div")).to_have_js_property(
         "foo",
-        {"a": 1, "b": "string", "c": datetime.utcfromtimestamp(1627503992000 / 1000)},
+        {
+            "a": 1,
+            "b": "string",
+            "c": datetime.datetime.fromtimestamp(1627503992000 / 1000),
+        },
     )
 
 
@@ -486,16 +490,41 @@ def test_assertions_locator_to_be_checked(page: Page, server: Server) -> None:
     page.set_content("<input type=checkbox>")
     my_checkbox = page.locator("input")
     expect(my_checkbox).not_to_be_checked()
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="Locator expected to be checked"):
         expect(my_checkbox).to_be_checked(timeout=100)
     expect(my_checkbox).to_be_checked(timeout=100, checked=False)
     with pytest.raises(AssertionError):
         expect(my_checkbox).to_be_checked(timeout=100, checked=True)
     my_checkbox.check()
     expect(my_checkbox).to_be_checked(timeout=100, checked=True)
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="Locator expected to be unchecked"):
         expect(my_checkbox).to_be_checked(timeout=100, checked=False)
     expect(my_checkbox).to_be_checked()
+
+
+def test_assertions_boolean_checked_with_intermediate_true(page: Page) -> None:
+    page.set_content("<input type=checkbox></input>")
+    page.locator("input").evaluate("e => e.indeterminate = true")
+    expect(page.locator("input")).to_be_checked(indeterminate=True)
+
+
+def test_assertions_boolean_checked_with_intermediate_true_and_checked(
+    page: Page,
+) -> None:
+    page.set_content("<input type=checkbox></input>")
+    page.locator("input").evaluate("e => e.indeterminate = true")
+    with pytest.raises(
+        Error, match="Can't assert indeterminate and checked at the same time"
+    ):
+        expect(page.locator("input")).to_be_checked(checked=False, indeterminate=True)
+
+
+def test_assertions_boolean_fail_with_indeterminate_true(page: Page) -> None:
+    page.set_content("<input type=checkbox></input>")
+    with pytest.raises(
+        AssertionError, match="LocatorAssertions.to_be_checked with timeout 1000ms"
+    ):
+        expect(page.locator("input")).to_be_checked(indeterminate=True, timeout=1000)
 
 
 def test_assertions_locator_to_be_disabled_enabled(page: Page, server: Server) -> None:
@@ -508,13 +537,21 @@ def test_assertions_locator_to_be_disabled_enabled(page: Page, server: Server) -
         expect(my_checkbox).to_be_disabled(timeout=100)
     my_checkbox.evaluate("e => e.disabled = true")
     expect(my_checkbox).to_be_disabled()
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="Locator expected to be enabled"):
         expect(my_checkbox).to_be_enabled(timeout=100)
 
 
 def test_assertions_locator_to_be_enabled_with_true(page: Page) -> None:
     page.set_content("<button>Text</button>")
     expect(page.locator("button")).to_be_enabled(enabled=True)
+
+
+def test_assertions_locator_to_be_enabled_with_false_throws_good_exception(
+    page: Page,
+) -> None:
+    page.set_content("<button>Text</button>")
+    with pytest.raises(AssertionError, match="Locator expected to be disabled"):
+        expect(page.locator("button")).to_be_enabled(enabled=False)
 
 
 def test_assertions_locator_to_be_enabled_with_false(page: Page) -> None:
@@ -555,11 +592,18 @@ def test_assertions_locator_to_be_enabled_eventually_with_not(page: Page) -> Non
 
 def test_assertions_locator_to_be_editable(page: Page, server: Server) -> None:
     page.goto(server.EMPTY_PAGE)
-    page.set_content("<input></input><button disabled>Text</button>")
-    expect(page.locator("button")).not_to_be_editable()
+    page.set_content("<input></input>")
     expect(page.locator("input")).to_be_editable()
-    with pytest.raises(AssertionError):
-        expect(page.locator("button")).to_be_editable(timeout=100)
+
+
+def test_assertions_locator_to_be_editable_throws(page: Page, server: Server) -> None:
+    page.goto(server.EMPTY_PAGE)
+    page.set_content("<button disabled>Text</button>")
+    with pytest.raises(
+        Error,
+        match=r"Element is not an <input>, <textarea>, <select> or \[contenteditable\] and does not have a role allowing \[aria-readonly\]",
+    ):
+        expect(page.locator("button")).not_to_be_editable()
 
 
 def test_assertions_locator_to_be_editable_with_true(page: Page) -> None:
@@ -570,6 +614,14 @@ def test_assertions_locator_to_be_editable_with_true(page: Page) -> None:
 def test_assertions_locator_to_be_editable_with_false(page: Page) -> None:
     page.set_content("<input readonly></input>")
     expect(page.locator("input")).to_be_editable(editable=False)
+
+
+def test_assertions_locator_to_be_editable_with_false_and_throw_good_exception(
+    page: Page,
+) -> None:
+    page.set_content("<input></input>")
+    with pytest.raises(AssertionError, match="Locator expected to be readonly"):
+        expect(page.locator("input")).to_be_editable(editable=False)
 
 
 def test_assertions_locator_to_be_editable_with_not_and_false(page: Page) -> None:
@@ -607,7 +659,7 @@ def test_assertions_locator_to_be_hidden_visible(page: Page, server: Server) -> 
         expect(my_checkbox).to_be_hidden(timeout=100)
     my_checkbox.evaluate("e => e.style.display = 'none'")
     expect(my_checkbox).to_be_hidden()
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="Locator expected to be visible"):
         expect(my_checkbox).to_be_visible(timeout=100)
 
 
@@ -619,6 +671,14 @@ def test_assertions_locator_to_be_visible_with_true(page: Page) -> None:
 def test_assertions_locator_to_be_visible_with_false(page: Page) -> None:
     page.set_content("<button hidden>hello</button>")
     expect(page.locator("button")).to_be_visible(visible=False)
+
+
+def test_assertions_locator_to_be_visible_with_false_throws_good_exception(
+    page: Page,
+) -> None:
+    page.set_content("<button>hello</button>")
+    with pytest.raises(AssertionError, match="Locator expected to be hidden"):
+        expect(page.locator("button")).to_be_visible(visible=False)
 
 
 def test_assertions_locator_to_be_visible_with_not_and_false(page: Page) -> None:
@@ -809,6 +869,15 @@ def test_should_be_attached_with_attached_false(page: Page) -> None:
     expect(locator).to_be_attached(attached=False)
 
 
+def test_should_be_attached_with_attached_false_and_throw_good_error(
+    page: Page,
+) -> None:
+    page.set_content("<button>hello</button>")
+    locator = page.locator("button")
+    with pytest.raises(AssertionError, match="Locator expected to be detached"):
+        expect(locator).to_be_attached(attached=False, timeout=1)
+
+
 def test_should_be_attached_with_not_and_attached_false(page: Page) -> None:
     page.set_content("<button>hello</button>")
     locator = page.locator("button")
@@ -834,7 +903,9 @@ def test_should_be_attached_eventually_with_not(page: Page) -> None:
 def test_should_be_attached_fail(page: Page) -> None:
     page.set_content("<button>Hello</button>")
     locator = page.locator("input")
-    with pytest.raises(AssertionError) as exc_info:
+    with pytest.raises(
+        AssertionError, match="Locator expected to be attached"
+    ) as exc_info:
         expect(locator).to_be_attached(timeout=1000)
     assert "locator resolved to" not in exc_info.value.args[0]
 
@@ -873,3 +944,102 @@ def test_should_be_able_to_set_custom_global_timeout(page: Page) -> None:
         )
     finally:
         expect.set_options(timeout=5_000)
+
+
+def test_to_have_accessible_name(page: Page) -> None:
+    page.set_content('<div role="button" aria-label="Hello"></div>')
+    locator = page.locator("div")
+    expect(locator).to_have_accessible_name("Hello")
+    expect(locator).not_to_have_accessible_name("hello")
+    expect(locator).to_have_accessible_name("hello", ignore_case=True)
+    expect(locator).to_have_accessible_name(re.compile(r"ell\w"))
+    expect(locator).not_to_have_accessible_name(re.compile(r"hello"))
+    expect(locator).to_have_accessible_name(re.compile(r"hello"), ignore_case=True)
+
+    page.set_content("<button>foo&nbsp;bar\nbaz</button>")
+    expect(page.locator("button")).to_have_accessible_name("foo bar baz")
+
+
+def test_to_have_accessible_error_message(page: Page) -> None:
+    page.set_content(
+        """
+      <form>
+        <input role="textbox" aria-invalid="true" aria-errormessage="error-message" />
+        <div id="error-message">Hello</div>
+        <div id="irrelevant-error">This should not be considered.</div>
+      </form>
+    """
+    )
+
+    locator = page.locator('input[role="textbox"]')
+    expect(locator).to_have_accessible_error_message("Hello")
+    expect(locator).not_to_have_accessible_error_message("hello")
+    expect(locator).to_have_accessible_error_message("hello", ignore_case=True)
+    expect(locator).to_have_accessible_error_message(re.compile(r"ell\w"))
+    expect(locator).not_to_have_accessible_error_message(re.compile(r"hello"))
+    expect(locator).to_have_accessible_error_message(
+        re.compile(r"hello"), ignore_case=True
+    )
+    expect(locator).not_to_have_accessible_error_message(
+        "This should not be considered."
+    )
+
+
+def test_to_have_accessible_error_message_should_handle_multiple_aria_error_message_references(
+    page: Page,
+) -> None:
+    page.set_content(
+        """
+      <form>
+        <input role="textbox" aria-invalid="true" aria-errormessage="error1 error2" />
+        <div id="error1">First error message.</div>
+        <div id="error2">Second error message.</div>
+        <div id="irrelevant-error">This should not be considered.</div>
+      </form>
+    """
+    )
+
+    locator = page.locator('input[role="textbox"]')
+
+    expect(locator).to_have_accessible_error_message(
+        "First error message. Second error message."
+    )
+    expect(locator).to_have_accessible_error_message(
+        re.compile(r"first error message.", re.IGNORECASE)
+    )
+    expect(locator).to_have_accessible_error_message(
+        re.compile(r"second error message.", re.IGNORECASE)
+    )
+    expect(locator).not_to_have_accessible_error_message(
+        re.compile(r"This should not be considered.", re.IGNORECASE)
+    )
+
+
+def test_to_have_accessible_description(page: Page) -> None:
+    page.set_content('<div role="button" aria-description="Hello"></div>')
+    locator = page.locator("div")
+    expect(locator).to_have_accessible_description("Hello")
+    expect(locator).not_to_have_accessible_description("hello")
+    expect(locator).to_have_accessible_description("hello", ignore_case=True)
+    expect(locator).to_have_accessible_description(re.compile(r"ell\w"))
+    expect(locator).not_to_have_accessible_description(re.compile(r"hello"))
+    expect(locator).to_have_accessible_description(
+        re.compile(r"hello"), ignore_case=True
+    )
+
+    page.set_content(
+        """
+        <div role="button" aria-describedby="desc"></div>
+        <span id="desc">foo&nbsp;bar\nbaz</span>
+    """
+    )
+    expect(page.locator("div")).to_have_accessible_description("foo bar baz")
+
+
+def test_to_have_role(page: Page) -> None:
+    page.set_content('<div role="button">Button!</div>')
+    expect(page.locator("div")).to_have_role("button")
+    expect(page.locator("div")).not_to_have_role("checkbox")
+    with pytest.raises(Error) as excinfo:
+        expect(page.locator("div")).to_have_role(re.compile(r"button|checkbox"))  # type: ignore
+    assert '"role" argument in to_have_role must be a string' in str(excinfo.value)
